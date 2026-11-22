@@ -292,7 +292,7 @@ button.path-field{width:100%;margin:0;cursor:pointer}
 .rendered-doc :is(strong,b){color:var(--text);font-weight:600}
 .rendered-doc a{color:var(--info);text-decoration:none}
 .rendered-doc code{color:var(--text);background:var(--raised);border:1px solid var(--line);border-radius:4px;padding:0 4px}
-.rendered-doc pre{padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r1);font:var(--fs-mono)/var(--lh-mono) var(--mono);color:var(--term-text);overflow-x:auto}
+.rendered-doc pre{padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r1);font:var(--fs-mono)/var(--lh-mono) var(--mono);color:var(--term-text);overflow-x:auto;overscroll-behavior-y:auto}
 .rendered-doc pre code{background:none;border:0;padding:0;color:inherit}
 .rendered-doc blockquote{padding-left:13px;border-left:2px solid var(--line2);color:var(--faint)}
 .rendered-doc table{border-collapse:collapse}
