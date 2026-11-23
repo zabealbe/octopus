@@ -67,6 +67,7 @@ async fn serve_on(dir: &Path, socket: &str, host: &str, relay: Option<iroh_relay
     let url: RelayUrl = url.parse().expect("a URL");
     let socket = dir.join(socket);
     let host = TerminalHost { program: OCTOPUS.into(), address: dir.join(host) };
+    octopus_server::lay_out_files(&dir.join("harnesses"), "the skill", Path::new(OCTOPUS)).expect("lay out files");
     let server = Server::open(
         SERVER,
         &dir.join("store.db"),
@@ -74,7 +75,7 @@ async fn serve_on(dir: &Path, socket: &str, host: &str, relay: Option<iroh_relay
         &host,
         url.clone(),
         false,
-        &dir.join("plugin"),
+        &dir.join("harnesses"),
     )
     .expect("open server");
     let endpoint = remote::listen(([127, 0, 0, 1], 0).into(), url, server.device()).await.expect("bind iroh");
@@ -132,7 +133,8 @@ fn server_run(dir: &Path) -> Command {
         .arg(dir.join("worktrees"))
         .arg("--terminal-host")
         .arg(dir.join("host.sock"))
-        .args(["--udp", "127.0.0.1:0", "--relay", NO_RELAY, "--microphone", "false"]);
+        .args(["--udp", "127.0.0.1:0", "--relay", NO_RELAY, "--microphone", "false"])
+        .env("HOME", dir.join("home"));
     command
 }
 
@@ -197,7 +199,7 @@ pub fn status_report(status: &str) -> String {
 
 /// A harness that is always installed and names no session.
 pub fn harness(id: &str, argv: Vec<String>) -> HarnessSet {
-    HarnessSet { id: id.into(), argv, install: "true".into(), start: vec![], resume: vec![] }
+    HarnessSet { id: id.into(), argv, install: "true".into(), resume: vec![], env: vec![] }
 }
 
 pub async fn set_harness(connection: &Connection, id: &str, argv: Vec<String>) {

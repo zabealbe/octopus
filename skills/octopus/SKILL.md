@@ -71,9 +71,15 @@ Declare how a harness starts its agent.
 - `--server <server>`: The paired server's name.
 - `--id <id>`: The harness's id, which tasks name.
 - `--argv <argv>`: The agent's argv as a JSON array of strings, e.g. ["claude"].
-- `--start <start>`: The args appended to argv on a session's first start, with {session} for the session id, e.g. ["--session-id","{session}"].
-- `--resume <resume>`: The args appended to argv on every later start, with {session} for the session id, e.g. ["--resume","{session}"].
+- `--resume <resume>`: The args appended to argv to resume the task's session, with {session} for its id, e.g. ["--resume","{session}"].
+- `--env <env>`: The variables the agent's terminal exports beside every task terminal's, e.g. [{"name":"FORCE_COLOR","value":"1"}]. {files} in argv, resume and a value stands for the server's harnesses folder.
 - `--install <install>`: The command that installs the agent, shown when it is missing.
+
+## `octopus harness list`
+
+List every harness the server knows: its built-in ones and the ones `harness.set` stored.
+
+- `--server <server>`: The paired server's name.
 
 ## `octopus harness check`
 
@@ -154,6 +160,21 @@ Focus a task, starting its agent if it has none.
 ## `octopus task get`
 
 Print a task.
+
+- `--server <server>`: The paired server's name.
+- `--task <task>`: The task's id.
+
+## `octopus agent report-session`
+
+Record the session a task's agent runs in, as the agent reports it, leaving the agent running; its next start resumes it.
+
+- `--server <server>`: The paired server's name.
+- `--task <task>`: The task's id.
+- `--session <session>`: The session the agent runs in.
+
+## `octopus agent hook`
+
+Report the session_id of the agent hook's JSON on stdin as the task's session. Prints nothing and exits 0 whatever happens, printing a failure on stderr, so a report never blocks the agent.
 
 - `--server <server>`: The paired server's name.
 - `--task <task>`: The task's id.

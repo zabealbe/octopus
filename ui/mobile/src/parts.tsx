@@ -150,8 +150,8 @@ export const Para = (props: { children: JSX.Element; center?: boolean }) => (
     {props.children}
   </div>
 );
-export const Note = (props: { children: JSX.Element; err?: boolean }) => (
-  <div class="note" classList={{ err: props.err }}>
+export const Note = (props: { children: JSX.Element; err?: boolean; wrap?: boolean }) => (
+  <div class="note" classList={{ err: props.err, wrap: props.wrap }}>
     <Show when={props.err}>
       <Slot>
         <Icon name="warn" />

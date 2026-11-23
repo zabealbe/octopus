@@ -83,15 +83,6 @@ impl Arg for Option<TaskId> {
 #[serde(transparent)]
 pub struct SessionId(pub String);
 
-/// The conversation a task's agent runs in.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(deny_unknown_fields)]
-pub struct Session {
-    pub id: SessionId,
-    /// Its next start resumes it: the agent created it, or `task.create` or `task.set_session` named it.
-    pub started: bool,
-}
-
 /// The session `task.create` gives a task: `fresh`, or an existing session's id.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionStart {
@@ -390,7 +381,8 @@ pub struct Task {
     pub title: String,
     pub state: TaskState,
     pub harness: String,
-    pub session: Session,
+    /// The conversation the task's agent runs in, which its next start resumes, or null until it has one.
+    pub session: Option<SessionId>,
     pub ended_at: Option<i64>,
     pub archived_at: Option<i64>,
     pub rev: u64,

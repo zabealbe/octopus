@@ -1,14 +1,15 @@
 //! The TypeScript the UI compiles against, rendered from the Rust types and constants that cross the IPC boundary.
 
 use octopus_proto::ops::{
-    Entry, EntryKind, Folder, HarnessStatus, Inside, Match, Offer, OsSetting, PairedAccount, PairedClient, Subfolder,
+    Entry, EntryKind, Folder, HarnessStatus, Harnesses, Inside, Match, Offer, OsSetting, PairedAccount, PairedClient,
+    Subfolder,
 };
 use octopus_proto::settings::{AgentFlags, Current, Setting};
 use octopus_proto::term::HISTORY_LINES;
 use octopus_proto::types::{
     AGENT_PANEL, Agent, AgentStatus, BACKGROUND_BROWSER_PANEL, BrowserId, BrowserPanel, BrowserTarget, FRESH_SESSION,
-    HOLDER_GRACE_MS, Hue, Listening, LockHolder, Mode, NEW_BROWSER_PANEL, Panel, PtyId, Session, SessionId, Swatch,
-    Task, TaskId, TaskState, Tone, WorkspaceId,
+    HOLDER_GRACE_MS, Hue, Listening, LockHolder, Mode, NEW_BROWSER_PANEL, Panel, PtyId, SessionId, Swatch, Task,
+    TaskId, TaskState, Tone, WorkspaceId,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -58,7 +59,6 @@ pub fn render() -> String {
         BrowserId,
         BrowserTarget,
         SessionId,
-        Session,
         TaskState,
         Mode,
         AgentStatus,
@@ -79,6 +79,7 @@ pub fn render() -> String {
         Inside,
         Folder,
         HarnessStatus,
+        Harnesses,
         Offer,
         ShownOffer,
         PairedClient,

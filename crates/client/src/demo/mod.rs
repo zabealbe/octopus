@@ -20,12 +20,12 @@ use anyhow::bail;
 use octopus_proto::account::Change;
 use octopus_proto::device::PublicKey;
 use octopus_proto::ops::{
-    AccountSync, BrowserClose, BrowserMove, BrowserOpen, BrowserReport, Done, FileCopy, FileCreate, FileDelete,
-    FileList, FileMove, FileSearch, FileWrite, FolderGet, HarnessCheck, HarnessSet, HarnessStatus, Offer,
-    PairingForget, PairingList, PairingOffer, ServerVersion, SessionHello, SessionPing, SessionSync, Synced,
-    TaskArchive, TaskCreate, TaskFocus, TaskGet, TaskMove, TaskRename, TaskSetParent, TaskSetSession, TaskSetWorkspace,
-    TermClaim, TermClose, TermOpen, TermResize, TermSend, TermTakeLock, Version, Welcome, WorkspaceAdd, WorkspaceList,
-    WorkspaceRemove, WorkspaceRename, WorkspaceSetColor,
+    AccountSync, AgentReportSession, BrowserClose, BrowserMove, BrowserOpen, BrowserReport, Done, FileCopy, FileCreate,
+    FileDelete, FileList, FileMove, FileSearch, FileWrite, FolderGet, HarnessCheck, HarnessList, HarnessSet,
+    HarnessStatus, Harnesses, Offer, PairingForget, PairingList, PairingOffer, ServerVersion, SessionHello,
+    SessionPing, SessionSync, Synced, TaskArchive, TaskCreate, TaskFocus, TaskGet, TaskMove, TaskRename, TaskSetParent,
+    TaskSetSession, TaskSetWorkspace, TermClaim, TermClose, TermOpen, TermResize, TermSend, TermTakeLock, Version,
+    Welcome, WorkspaceAdd, WorkspaceList, WorkspaceRemove, WorkspaceRename, WorkspaceSetColor,
 };
 use octopus_proto::remote::{self, RelayUrl};
 use octopus_proto::types::{PtyId, ReadDir, Stream};
@@ -217,9 +217,11 @@ impl Demo {
             WorkspaceRemove => |op| world.workspace_remove(op);
             FolderGet => |op| world.folder_get(op);
             HarnessSet => |op| Ok(world.harness_set(op.id));
+            HarnessList => |_| Ok(Harnesses { harnesses: vec!["claude-code".into()] });
             HarnessCheck => |_| Ok(HarnessStatus { program: "claude".into(), installed: true, install: String::new() });
             TaskCreate => |op| world.task_create(op);
             TaskSetSession => |op| world.task_set_session(op);
+            AgentReportSession => |op| world.task_set_session(TaskSetSession { task: op.task, session: op.session });
             TaskMove => |op| world.task_move(op);
             TaskSetParent => |op| world.task_set_parent(op);
             TaskSetWorkspace => |op| world.task_set_workspace(op);

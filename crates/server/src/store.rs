@@ -4,16 +4,15 @@ use std::path::Path;
 use octopus_proto::Error;
 use octopus_proto::account::{Account, AccountId};
 use octopus_proto::device::{DeviceKey, PublicKey};
+use octopus_proto::ops::EnvVar;
 use octopus_proto::settings::Settings;
 use octopus_proto::types::{
-    AGENT_PANEL, BrowserId, BrowserPanel, Color, Mode, PtyId, Session, SessionId, TaskId, TaskState, Workspace,
-    WorkspaceId, from_wire, to_wire,
+    AGENT_PANEL, BrowserId, BrowserPanel, Color, Mode, PtyId, SessionId, TaskId, TaskState, Workspace, WorkspaceId,
+    from_wire, to_wire,
 };
 use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde::de::DeserializeOwned;
-
-use crate::harness;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
@@ -36,8 +35,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     worktree TEXT,
     branch TEXT,
     harness TEXT NOT NULL,
-    session TEXT NOT NULL,
-    session_started INTEGER NOT NULL,
+    session TEXT,
     ended_at INTEGER,
     archived_at INTEGER,
     rev INTEGER NOT NULL
@@ -45,8 +43,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS harnesses (
     id TEXT PRIMARY KEY,
     argv TEXT NOT NULL,
-    start TEXT NOT NULL,
     resume TEXT NOT NULL,
+    env TEXT NOT NULL,
     install TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS panels (
@@ -71,21 +69,43 @@ CREATE TABLE IF NOT EXISTS owner (id INTEGER PRIMARY KEY CHECK (id = 0), account
 ";
 
 const DROP_HARNESS_HOOKS: &str = "ALTER TABLE harnesses DROP COLUMN hooks";
+const ADD_HARNESS_ENV: &str = "ALTER TABLE harnesses ADD COLUMN env TEXT NOT NULL DEFAULT '[]'";
+const DROP_HARNESS_START: &str = "ALTER TABLE harnesses DROP COLUMN start";
+/// A task's session becomes the one its agent last ran in, or null where its agent never started it.
+const SESSIONS_AGENTS_RAN_IN: &str = "ALTER TABLE tasks ADD COLUMN ran_in TEXT;
+    UPDATE tasks SET ran_in = session WHERE session_started = 1;
+    ALTER TABLE tasks DROP COLUMN session;
+    ALTER TABLE tasks DROP COLUMN session_started;
+    ALTER TABLE tasks RENAME COLUMN ran_in TO session;";
+/// A stored `claude-code` harness running bare `claude` stands aside for the built-in one.
+const DROP_SEEDED_CLAUDE_CODE: &str = r#"DELETE FROM harnesses WHERE id = 'claude-code' AND argv = '["claude"]'
+    AND resume = '["--resume","{session}"]'"#;
 
 const INSERT_TASK: &str = "INSERT INTO tasks (id, workspace, parent, title, state, folder, mode, directory, worktree,
-    branch, harness, session, session_started, ended_at, archived_at, rev)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)";
+    branch, harness, session, ended_at, archived_at, rev)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)";
 
-/// Lays the store out in `SCHEMA`, dropping the hooks of its harnesses.
+/// Lays the store out in `SCHEMA`: its harnesses drop their hooks and start args and gain their env, a seeded
+/// `claude-code` harness leaves the built-in one standing, and each task keeps only a session its agent ran in.
 fn lay_out(tx: &Transaction) -> Result<(), Error> {
     tx.execute_batch(SCHEMA).map_err(Error::internal)?;
-    let hooks: bool = tx
-        .query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('harnesses') WHERE name = 'hooks')", [], |row| {
+    let has = |table: &str, column: &str| -> Result<bool, Error> {
+        tx.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)", [table, column], |row| {
             row.get(0)
         })
-        .map_err(Error::internal)?;
-    if hooks {
-        tx.execute_batch(DROP_HARNESS_HOOKS).map_err(Error::internal)?;
+        .map_err(Error::internal)
+    };
+    let changes = [
+        (has("harnesses", "hooks")?, DROP_HARNESS_HOOKS),
+        (has("harnesses", "start")?, DROP_HARNESS_START),
+        (!has("harnesses", "env")?, ADD_HARNESS_ENV),
+        (has("tasks", "session_started")?, SESSIONS_AGENTS_RAN_IN),
+        (true, DROP_SEEDED_CLAUDE_CODE),
+    ];
+    for (due, change) in changes {
+        if due {
+            tx.execute_batch(change).map_err(Error::internal)?;
+        }
     }
     Ok(())
 }
@@ -136,7 +156,7 @@ pub struct TaskRow {
     pub directory: String,
     pub worktree: Option<Worktree>,
     pub harness: String,
-    pub session: Session,
+    pub session: Option<SessionId>,
     pub ended_at: Option<i64>,
     pub archived_at: Option<i64>,
     pub rev: u64,
@@ -145,8 +165,8 @@ pub struct TaskRow {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Harness {
     pub argv: Vec<String>,
-    pub start: Vec<String>,
     pub resume: Vec<String>,
+    pub env: Vec<EnvVar>,
     pub install: String,
 }
 
@@ -217,18 +237,20 @@ fn task_row(row: &Row) -> rusqlite::Result<TaskRow> {
         directory: row.get("directory")?,
         worktree: worktree(row, mode)?,
         harness: row.get("harness")?,
-        session: Session { id: SessionId(row.get("session")?), started: row.get("session_started")? },
+        session: row.get::<_, Option<String>>("session")?.map(SessionId),
         ended_at: row.get("ended_at")?,
         archived_at: row.get("archived_at")?,
         rev: row.get::<_, i64>("rev")?.cast_unsigned(),
     })
 }
 
-const INSERT_HARNESS: &str = "INSERT INTO harnesses (id, argv, start, resume, install) VALUES (?1, ?2, ?3, ?4, ?5)";
+const INSERT_HARNESS: &str = "INSERT INTO harnesses (id, argv, resume, env, install) VALUES (?1, ?2, ?3, ?4, ?5)";
 
 fn harness_values(id: &str, harness: &Harness) -> [String; 5] {
-    let json = |args: &Vec<String>| serde_json::to_string(args).expect("a list of strings is JSON");
-    [id.to_string(), json(&harness.argv), json(&harness.start), json(&harness.resume), harness.install.clone()]
+    fn json(value: &impl serde::Serialize) -> String {
+        serde_json::to_string(value).expect("a harness's lists are JSON")
+    }
+    [id.to_string(), json(&harness.argv), json(&harness.resume), json(&harness.env), harness.install.clone()]
 }
 
 fn workspace_row(row: &Row) -> rusqlite::Result<Workspace> {
@@ -251,9 +273,6 @@ impl Store {
         let unfit = |error| Error::internal(format!("{}: this server cannot open it: {error}", path.display()));
         lay_out(&tx).map_err(unfit)?;
         tx.prepare(INSERT_TASK).map(drop).map_err(|error| unfit(Error::internal(error)))?;
-        // A stored `claude-code` harness stands as `harness.set` left it.
-        let seed = format!("{INSERT_HARNESS} ON CONFLICT(id) DO NOTHING");
-        tx.execute(&seed, harness_values(harness::CLAUDE_CODE, &harness::claude_code())).map_err(Error::internal)?;
         tx.commit().map_err(Error::internal)?;
         Ok(Self { db })
     }
@@ -471,26 +490,34 @@ impl Store {
     pub fn set_harness(&mut self, id: &str, harness: &Harness) -> Result<u64, Error> {
         let tx = self.db.transaction().map_err(Error::internal)?;
         let upsert = format!(
-            "{INSERT_HARNESS} ON CONFLICT(id) DO UPDATE SET argv = excluded.argv, start = excluded.start,
-             resume = excluded.resume, install = excluded.install"
+            "{INSERT_HARNESS} ON CONFLICT(id) DO UPDATE SET argv = excluded.argv, resume = excluded.resume,
+             env = excluded.env, install = excluded.install"
         );
         tx.execute(&upsert, harness_values(id, harness)).map_err(Error::internal)?;
         commit_rev(tx)
     }
 
+    /// The harness a `harness.set` stored under `id`.
     pub fn harness(&self, id: &str) -> Result<Option<Harness>, Error> {
         let row: Option<([String; 3], String)> = self
             .db
-            .query_row("SELECT argv, start, resume, install FROM harnesses WHERE id = ?1", [id], |row| {
+            .query_row("SELECT argv, resume, env, install FROM harnesses WHERE id = ?1", [id], |row| {
                 Ok(([row.get(0)?, row.get(1)?, row.get(2)?], row.get(3)?))
             })
             .optional()
             .map_err(Error::internal)?;
-        row.map(|([argv, start, resume], install)| {
-            let args = |json: &str| serde_json::from_str(json).map_err(Error::internal);
-            Ok(Harness { argv: args(&argv)?, start: args(&start)?, resume: args(&resume)?, install })
+        row.map(|([argv, resume, env], install)| {
+            fn field<T: DeserializeOwned>(json: &str) -> Result<T, Error> {
+                serde_json::from_str(json).map_err(Error::internal)
+            }
+            Ok(Harness { argv: field(&argv)?, resume: field(&resume)?, env: field(&env)?, install })
         })
         .transpose()
+    }
+
+    /// The ids of the harnesses `harness.set` stored.
+    pub fn harness_ids(&self) -> Result<Vec<String>, Error> {
+        select(&self.db, "SELECT id FROM harnesses", [], |row| row.get(0))
     }
 
     pub fn create_task(&mut self, mut row: TaskRow) -> Result<TaskRow, Error> {
@@ -510,8 +537,7 @@ impl Store {
                 row.worktree.as_ref().map(|worktree| &worktree.path),
                 row.worktree.as_ref().map(|worktree| &worktree.branch),
                 row.harness,
-                row.session.id.0,
-                row.session.started,
+                row.session.as_ref().map(|session| &session.0),
                 row.ended_at,
                 row.archived_at,
                 row.rev.cast_signed()
@@ -577,15 +603,13 @@ impl Store {
         let tx = self.db.transaction().map_err(Error::internal)?;
         row.rev = bump_rev(&tx)?;
         tx.execute(
-            "UPDATE tasks SET title = ?2, state = ?3, session = ?4, session_started = ?5, ended_at = ?6, archived_at = ?7,
-             rev = ?8, parent = ?9
+            "UPDATE tasks SET title = ?2, state = ?3, session = ?4, ended_at = ?5, archived_at = ?6, rev = ?7, parent = ?8
              WHERE id = ?1",
             params![
                 row.id.0,
                 row.title,
                 to_wire(&row.state),
-                row.session.id.0,
-                row.session.started,
+                row.session.as_ref().map(|session| &session.0),
                 row.ended_at,
                 row.archived_at,
                 row.rev.cast_signed(),
@@ -702,9 +726,8 @@ mod tests {
         store
             .db
             .execute(
-                "INSERT INTO tasks (id, workspace, title, state, folder, mode, directory, harness, session,
-                 session_started, rev)
-                 VALUES ('tsk_1', ?1, 't', 'pinned', '/w', 'in_place', '/w', 'h', 's', 0, 1)",
+                "INSERT INTO tasks (id, workspace, title, state, folder, mode, directory, harness, session, rev)
+                 VALUES ('tsk_1', ?1, 't', 'pinned', '/w', 'in_place', '/w', 'h', 's', 1)",
                 [workspace.id.0],
             )
             .expect("a task");
@@ -727,41 +750,66 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_store_runs_claude_code_until_the_user_sets_it_otherwise() {
+    fn a_harness_set_stands_across_restarts() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("store.db");
         let mut store = Store::open(&path).expect("a fresh store");
-        let claude_code = Harness {
-            argv: vec!["claude".into()],
-            start: vec!["--session-id".into(), "{session}".into()],
-            resume: vec!["--resume".into(), "{session}".into()],
-            install: "npm install -g @anthropic-ai/claude-code".into(),
+        assert_eq!(store.harness_ids().expect("ids"), Vec::<String>::new());
+        let aider = Harness {
+            argv: vec!["aider".into()],
+            resume: vec![],
+            env: vec![EnvVar { name: "AIDER_DARK_MODE".into(), value: "1".into() }],
+            install: "pip install aider".into(),
         };
-        assert_eq!(store.harness("claude-code").expect("harness"), Some(claude_code.clone()));
-        let set = Harness { argv: vec!["claude".into(), "--verbose".into()], ..claude_code };
-        store.set_harness("claude-code", &set).expect("harness.set");
+        store.set_harness("aider", &aider).expect("harness.set");
         drop(store);
         let store = Store::open(&path).expect("reopen");
-        assert_eq!(store.harness("claude-code").expect("harness"), Some(set));
+        assert_eq!(store.harness("aider").expect("harness"), Some(aider));
     }
 
     #[test]
-    fn a_store_whose_harnesses_hold_hooks_opens_without_them() {
+    fn an_older_store_drops_its_seeded_claude_code_and_keeps_the_harnesses_set() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("store.db");
         Connection::open(&path)
             .and_then(|db| {
                 db.execute_batch(
-                    "CREATE TABLE harnesses (id TEXT PRIMARY KEY, argv TEXT NOT NULL, start TEXT NOT NULL,
+                    r#"CREATE TABLE harnesses (id TEXT PRIMARY KEY, argv TEXT NOT NULL, start TEXT NOT NULL,
                          resume TEXT NOT NULL, install TEXT NOT NULL, hooks TEXT NOT NULL);
-                     INSERT INTO harnesses VALUES ('aider', '[\"aider\"]', '[]', '[]', 'pip install aider', 'none');",
+                     INSERT INTO harnesses VALUES ('claude-code', '["claude"]', '["--session-id","{session}"]',
+                         '["--resume","{session}"]', 'npm install -g @anthropic-ai/claude-code', 'none');
+                     INSERT INTO harnesses VALUES ('aider', '["aider"]', '[]', '[]', 'pip install aider', 'none');"#,
                 )
             })
-            .expect("a store of hooked harnesses");
-        let mut store = Store::open(&path).expect("open");
+            .expect("an older store");
+        let store = Store::open(&path).expect("open");
+        assert_eq!(store.harness("claude-code").expect("harness"), None);
         let aider =
-            Harness { argv: vec!["aider".into()], start: vec![], resume: vec![], install: "pip install aider".into() };
-        assert_eq!(store.harness("aider").expect("harness"), Some(aider.clone()));
-        store.set_harness("aider", &aider).expect("harness.set");
+            Harness { argv: vec!["aider".into()], resume: vec![], env: vec![], install: "pip install aider".into() };
+        assert_eq!(store.harness("aider").expect("harness"), Some(aider));
+    }
+
+    #[test]
+    fn an_older_store_keeps_only_the_sessions_its_agents_started() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("store.db");
+        Connection::open(&path)
+            .and_then(|db| {
+                db.execute_batch(
+                    "CREATE TABLE tasks (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, parent TEXT, title TEXT NOT NULL,
+                         state TEXT NOT NULL, folder TEXT NOT NULL, mode TEXT NOT NULL, directory TEXT NOT NULL,
+                         worktree TEXT, branch TEXT, harness TEXT NOT NULL, session TEXT NOT NULL,
+                         session_started INTEGER NOT NULL, ended_at INTEGER, archived_at INTEGER, rev INTEGER NOT NULL);
+                     INSERT INTO tasks VALUES ('tsk_ran', 'wsp_1', NULL, 't', 'pinned', '/w', 'in_place', '/w', NULL,
+                         NULL, 'claude-code', 'ran', 1, NULL, NULL, 1);
+                     INSERT INTO tasks VALUES ('tsk_fresh', 'wsp_1', NULL, 't', 'pinned', '/w', 'in_place', '/w', NULL,
+                         NULL, 'claude-code', 'minted', 0, NULL, NULL, 2);",
+                )
+            })
+            .expect("an older store");
+        let store = Store::open(&path).expect("open");
+        let session = |id: &str| store.task(&TaskId(id.into())).expect("task").session;
+        assert_eq!(session("tsk_ran"), Some(SessionId("ran".into())));
+        assert_eq!(session("tsk_fresh"), None);
     }
 }

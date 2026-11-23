@@ -316,7 +316,8 @@ mod tests {
 
     impl Client {
         fn new() -> Self {
-            Self { term: Term::new(Config::default(), &TermSize::new(1, 1), VoidListener), parser: Processor::new() }
+            let config = Config { kitty_keyboard: true, ..Config::default() };
+            Self { term: Term::new(config, &TermSize::new(1, 1), VoidListener), parser: Processor::new() }
         }
 
         fn read(&mut self, piece: &Piece) {
@@ -376,6 +377,15 @@ mod tests {
         assert!(wrapped[Column(0)].flags.contains(Flags::BOLD), "attributes survive the reflow");
         assert_eq!(client.cursor().1, 2);
         assert!(client.term.mode().contains(TermMode::APP_CURSOR));
+    }
+
+    #[test]
+    fn a_client_attaching_after_a_program_pushed_its_keyboard_flags_reads_them() {
+        let mut output = output();
+        output.add(b"\x1b[?1049h\x1b[>7u");
+        let client = attach(&mut output);
+        let flags = TermMode::DISAMBIGUATE_ESC_CODES | TermMode::REPORT_EVENT_TYPES | TermMode::REPORT_ALTERNATE_KEYS;
+        assert_eq!(client.term.mode().intersection(TermMode::KITTY_KEYBOARD_PROTOCOL), flags);
     }
 
     #[test]

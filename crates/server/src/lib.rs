@@ -29,12 +29,13 @@ use octopus_proto::device::{DeviceKey, PublicKey};
 pub(crate) use octopus_proto::lock;
 pub use octopus_proto::now;
 use octopus_proto::ops::{
-    AccountSync, BrowserClose, BrowserMove, BrowserOpen, BrowserReport, Done, Entries, FileCopy, FileCreate,
-    FileDelete, FileList, FileMove, FileSearch, FileWrite, FolderGet, HarnessCheck, HarnessSet, Matches, Offer,
-    PairingForget, PairingList, PairingOffer, Revised, ServerVersion, SessionHello, SessionPing, SessionSync, Snapshot,
-    TaskArchive, TaskCreate, TaskFocus, TaskGet, TaskMove, TaskRename, TaskSetParent, TaskSetSession, TaskSetWorkspace,
-    TermClaim, TermClose, TermInstallMicrophone, TermOpen, TermResize, TermSend, TermTakeLock, Version, Welcome,
-    WorkspaceAdd, WorkspaceList, WorkspaceRemove, WorkspaceRename, WorkspaceSetColor, Workspaces, Written,
+    AccountSync, AgentReportSession, BrowserClose, BrowserMove, BrowserOpen, BrowserReport, Done, Entries, FileCopy,
+    FileCreate, FileDelete, FileList, FileMove, FileSearch, FileWrite, FolderGet, HarnessCheck, HarnessList,
+    HarnessSet, Matches, Offer, PairingForget, PairingList, PairingOffer, Revised, ServerVersion, SessionHello,
+    SessionPing, SessionSync, Snapshot, TaskArchive, TaskCreate, TaskFocus, TaskGet, TaskMove, TaskRename,
+    TaskSetParent, TaskSetSession, TaskSetWorkspace, TermClaim, TermClose, TermInstallMicrophone, TermOpen, TermResize,
+    TermSend, TermTakeLock, Version, Welcome, WorkspaceAdd, WorkspaceList, WorkspaceRemove, WorkspaceRename,
+    WorkspaceSetColor, Workspaces, Written,
 };
 use octopus_proto::remote::{Connection, RelayUrl};
 use octopus_proto::types::{AGENT_PANEL, BrowserPanel, Listening, PtyId, TaskId};
@@ -44,6 +45,7 @@ use tokio::sync::broadcast;
 pub use agents::AGENT_RECLAIM_MS;
 use agents::AgentSlot;
 use client::Client;
+pub use harness::lay_out_files;
 use host::HostClient;
 pub use host::{TerminalHost, run_terminal_host};
 pub use listener::serve;
@@ -78,8 +80,8 @@ pub struct Server {
     relay: RelayUrl,
     offers: Mutex<Offers>,
     worktrees: PathBuf,
-    /// The Claude Code plugin carrying the octopus skill.
-    plugin: PathBuf,
+    /// The harnesses folder, which `{files}` names in a harness.
+    files: PathBuf,
     /// The `octopus` binary this server runs, which installs the virtual microphone.
     program: PathBuf,
     host: Arc<HostClient>,
@@ -121,8 +123,8 @@ fn nonempty(what: &str, text: &str) -> Result<(), Error> {
 
 impl Server {
     /// Reattaches the hosted terminals the store records and ends the ones it doesn't. With `microphone`, every
-    /// terminal gets a virtual microphone its lock holder feeds. Every Claude Code agent loads the plugin at
-    /// `plugin`.
+    /// terminal gets a virtual microphone its lock holder feeds. `files` is the harnesses folder, which
+    /// `{files}` names in a harness.
     pub fn open(
         name: &str,
         store: &Path,
@@ -130,7 +132,7 @@ impl Server {
         host: &TerminalHost,
         relay: RelayUrl,
         microphone: bool,
-        plugin: &Path,
+        files: &Path,
     ) -> Result<Arc<Self>, Error> {
         let mut store = Store::open(store)?;
         let device = store.device_key()?;
@@ -155,7 +157,7 @@ impl Server {
             relay,
             offers: Mutex::default(),
             worktrees: worktrees.to_path_buf(),
-            plugin: plugin.to_path_buf(),
+            files: files.to_path_buf(),
             program: host_program,
             host,
             state: Mutex::new(State {
@@ -240,6 +242,8 @@ impl Server {
             FolderGet::NAME => call::<FolderGet>(args, folders::folder_get),
             HarnessSet::NAME => call::<HarnessSet>(args, |op| self.harness_set(op)),
             HarnessCheck::NAME => call::<HarnessCheck>(args, |op| self.harness_check(op)),
+            HarnessList::NAME => call::<HarnessList>(args, |_| self.harness_list()),
+            AgentReportSession::NAME => call::<AgentReportSession>(args, |op| self.agent_report_session(op)),
             TaskCreate::NAME => call::<TaskCreate>(args, |op| self.task_create(op)),
             TaskMove::NAME => call::<TaskMove>(args, |op| self.task_move(op)),
             TaskSetParent::NAME => call::<TaskSetParent>(args, |op| self.task_set_parent(op)),

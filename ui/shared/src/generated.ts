@@ -12,12 +12,6 @@ export type BrowserTarget = BrowserId | typeof NEW_BROWSER_PANEL | typeof BACKGR
 
 export type SessionId = string;
 
-export type Session = { id: SessionId, 
-/**
- * Its next start resumes it: the agent created it, or `task.create` or `task.set_session` named it.
- */
-started: boolean, };
-
 export type TaskState = "pinned" | "temporary" | "completed" | "cancelled";
 
 export type Mode = "in_place" | "worktree" | "copy";
@@ -64,7 +58,11 @@ directory: string,
 /**
  * The worktree's branch, or null for an `in_place` task.
  */
-branch: string | null, parent: TaskId | null, title: string, state: TaskState, harness: string, session: Session, ended_at: number | null, archived_at: number | null, rev: number, agent: Agent, panels: Array<Panel>, browsers: Array<BrowserPanel>, };
+branch: string | null, parent: TaskId | null, title: string, state: TaskState, harness: string, 
+/**
+ * The conversation the task's agent runs in, which its next start resumes, or null until it has one.
+ */
+session: SessionId | null, ended_at: number | null, archived_at: number | null, rev: number, agent: Agent, panels: Array<Panel>, browsers: Array<BrowserPanel>, };
 
 export type EntryKind = "file" | "directory";
 
@@ -121,6 +119,12 @@ installed: boolean,
  * The command that installs the program.
  */
 install: string, };
+
+export type Harnesses = { 
+/**
+ * Every harness id the server knows, sorted.
+ */
+harnesses: Array<string>, };
 
 export type Offer = { invite: string, 
 /**
@@ -409,6 +413,6 @@ export const TERM_HISTORY_LINES = 10000 as const;
 
 export const HOLDER_GRACE_MS = 10000 as const;
 
-export const COMMANDS = ["boot","ready","ui_act","quit","server_pair","server_offer","server_accounts","server_revoke","account_link","account_join","settings_set","account_remove","account_leave","account_start_over","servers_refresh","server_rename","server_forget","workspace_add","workspace_remove","section_rename","section_color","auto_color","task_focus","task_resume","task_move","task_set_parent","task_set_workspace","task_rename","task_archive","task_create","folder_get","harness_check","term_attach","term_input","term_detach","term_open","term_install_microphone","term_close","term_claim","term_take_lock","term_resize","browser_open","browser_close","browser_move","file_list","file_root_url","file_write","file_create","file_move","file_copy","file_delete","file_upload","file_upload_content","file_search"] as const;
+export const COMMANDS = ["boot","ready","ui_act","quit","server_pair","server_offer","server_accounts","server_revoke","account_link","account_join","settings_set","account_remove","account_leave","account_start_over","servers_refresh","server_rename","server_forget","workspace_add","workspace_remove","section_rename","section_color","auto_color","task_focus","task_resume","task_move","task_set_parent","task_set_workspace","task_rename","task_archive","task_create","folder_get","harness_check","harness_list","term_attach","term_input","term_detach","term_open","term_install_microphone","term_close","term_claim","term_take_lock","term_resize","browser_open","browser_close","browser_move","file_list","file_root_url","file_write","file_create","file_move","file_copy","file_delete","file_upload","file_upload_content","file_search"] as const;
 
 export const EVENTS = {"account":"account","browserDownloaded":"browser_downloaded","browserFailed":"browser_failed","browserHeld":"browser_held","browserOpened":"browser_opened","browserPaged":"browser_paged","fileDrag":"file-drag","filesChanged":"files_changed","microphoneDenied":"microphone_denied","model":"model","servers":"servers","ui":"ui","windowFocused":"window-focused","windowShown":"window-shown"} as const;

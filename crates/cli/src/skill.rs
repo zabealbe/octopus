@@ -1,5 +1,6 @@
 //! The octopus skill: every command and flag of the command tree, rendered for an agent to read, installed for the
-//! user's Claude Code, and laid out as the plugin a server hands its agents.
+//! user's Claude Code, and handed to the agents a server runs: through the harness files it lays out, and in
+//! `~/.agents/skills` for Codex and OpenCode.
 
 use std::path::{Path, PathBuf};
 
@@ -75,11 +76,6 @@ pub fn render(tree: &Command) -> String {
     out
 }
 
-/// The Claude Code plugin a server hands its agents, beside the server's store.
-pub const PLUGIN_DIR: &str = "claude-plugin";
-const PLUGIN_MANIFEST: &str = r#"{ "name": "octopus", "description": "The octopus skill, for agents octopus runs." }
-"#;
-
 /// Writes `text` to `path`, making its folders.
 fn write(path: &Path, text: &str) -> anyhow::Result<()> {
     let folder = path.parent().expect("a skill file sits in a folder");
@@ -87,15 +83,18 @@ fn write(path: &Path, text: &str) -> anyhow::Result<()> {
     std::fs::write(path, text).with_context(|| format!("write {}", path.display()))
 }
 
-/// Lays out at `dir` a Claude Code plugin carrying the skill this binary renders.
-pub fn write_plugin(dir: &Path) -> anyhow::Result<()> {
-    write(&dir.join(".claude-plugin/plugin.json"), PLUGIN_MANIFEST)?;
-    write(&dir.join("skills/octopus/SKILL.md"), &render(&crate::commands::tree()))
+fn home() -> anyhow::Result<PathBuf> {
+    dirs::home_dir().ok_or_else(|| anyhow!("no home directory"))
 }
 
 /// The folder Claude Code reads the user's octopus skill from.
 fn user_skill() -> anyhow::Result<PathBuf> {
-    Ok(dirs::home_dir().ok_or_else(|| anyhow!("no home directory"))?.join(".claude/skills/octopus"))
+    Ok(home()?.join(".claude/skills/octopus"))
+}
+
+/// Writes the skill this binary renders to `~/.agents/skills/octopus/SKILL.md`, where Codex and OpenCode read it.
+pub fn install_for_agents() -> anyhow::Result<()> {
+    write(&home()?.join(".agents/skills/octopus/SKILL.md"), &render(&crate::commands::tree()))
 }
 
 #[derive(Serialize)]

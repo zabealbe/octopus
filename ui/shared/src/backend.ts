@@ -13,6 +13,7 @@ import type {
   FilesChanged,
   Folder,
   HarnessStatus,
+  Harnesses,
   Match,
   Model,
   NewTask,
@@ -97,6 +98,7 @@ export const backend = {
   /** Whether the harness's program is installed on `server`; null when the server has no such harness. */
   harnessCheck: (server: string, harness: string) =>
     invoke<HarnessStatus | null>(octopus("harness_check"), { server, harness }),
+  harnessList: (server: string) => invoke<Harnesses>(octopus("harness_list"), { server }),
   taskRename: (at: TaskRef, title: string) => invoke<void>(octopus("task_rename"), { at, title }),
   taskArchive: (at: TaskRef) => invoke<void>(octopus("task_archive"), { at }),
   /** Resolves to the created task's key. */

@@ -76,10 +76,19 @@ export function newTaskDraft(section: string | null) {
     );
   const [state, setState] = createSignal<TaskState>("temporary");
   const [harness, setHarness] = createSignal(current?.task.harness ?? "claude-code");
+  const [listed] = createResource(
+    () => chosen()?.server ?? false,
+    (on) => backend.harnessList(on).then((list) => list.harnesses),
+  );
+  /** The harnesses the workspace's server lists, led by the chosen one while the server lacks it. */
+  const harnesses = () => {
+    const known = listed.state === "errored" ? [] : (listed.latest ?? []);
+    return known.includes(harness()) ? known : [harness(), ...known];
+  };
   /** The harness checked on the workspace's server, as each of them changes. */
   const [checked] = createResource(
     () => {
-      const [on, id] = [chosen()?.server, harness().trim()];
+      const [on, id] = [chosen()?.server, harness()];
       return on === undefined || id === "" ? false : { on, id };
     },
     ({ on, id }) => backend.harnessCheck(on, id).then((status) => ({ on, id, status })),
@@ -96,8 +105,7 @@ export function newTaskDraft(section: string | null) {
   const [session, setSession] = createSignal("");
   const [refusal, setRefusal] = createSignal<string | null>(null);
   const [creating, setCreating] = createSignal(false);
-  const complete = () =>
-    chosen() !== undefined && title().trim() !== "" && harness().trim() !== "" && shown() !== undefined;
+  const complete = () => chosen() !== undefined && title().trim() !== "" && harness() !== "" && shown() !== undefined;
 
   const setWorkspace = (key: string) => {
     if (key === workspace()) return;
@@ -123,7 +131,7 @@ export function newTaskDraft(section: string | null) {
         title: title().trim(),
         parent: parent(),
         state: state(),
-        harness: harness().trim(),
+        harness: harness(),
         session: fresh === "" ? FRESH_SESSION : fresh,
       })
       .then(
@@ -160,6 +168,7 @@ export function newTaskDraft(section: string | null) {
     setState,
     harness,
     setHarness,
+    harnesses,
     harnessMissing,
     session,
     setSession,

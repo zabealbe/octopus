@@ -17,7 +17,7 @@ use octopus_proto::ops::{
 use octopus_proto::term::Piece;
 use octopus_proto::types::{
     AGENT_PANEL, Agent, AgentStatus, BrowserId, BrowserPanel, BrowserTarget, Color, Listening, LockHolder, Mode, Panel,
-    PtyId, Session, SessionId, SessionStart, Task, TaskId, TaskState, Workspace, WorkspaceId, web_page,
+    PtyId, SessionId, SessionStart, Task, TaskId, TaskState, Workspace, WorkspaceId, web_page,
 };
 use octopus_proto::{Error, Event, Push, now};
 use tokio::sync::{broadcast, oneshot};
@@ -181,7 +181,7 @@ impl World {
             title: title.into(),
             state,
             harness: "agent".into(),
-            session: Session { id: SessionId(format!("demo-{id}")), started: true },
+            session: Some(SessionId(format!("demo-{id}"))),
             ended_at: None,
             archived_at: None,
             rev: self.rev,
@@ -352,8 +352,8 @@ impl World {
         let branch = (op.mode != Mode::InPlace).then(|| slug(&op.title));
         self.add_task(&id, &op.title, op.state, None, branch.as_deref());
         let session = match op.session {
-            SessionStart::Fresh => Session { id: SessionId(format!("demo-{id}")), started: false },
-            SessionStart::Resume(id) => Session { id, started: true },
+            SessionStart::Fresh => None,
+            SessionStart::Resume(id) => Some(id),
         };
         let task = TaskId(id);
         let created = self.task_mut(&task)?;
@@ -381,7 +381,7 @@ impl World {
     }
 
     pub(super) fn task_set_session(&mut self, op: TaskSetSession) -> Result<Revised, Error> {
-        self.task_changed(&op.task, |task| task.session = Session { id: op.session, started: true })
+        self.task_changed(&op.task, |task| task.session = Some(op.session))
     }
 
     pub(super) fn task_move(&mut self, op: TaskMove) -> Result<Revised, Error> {

@@ -262,7 +262,7 @@ pub fn lists(caches: &BTreeMap<String, Cache>, waking: &Waking) -> Lists {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use octopus_proto::types::{Listening, Mode, Panel, PtyId, Session, SessionId, Workspace};
+    use octopus_proto::types::{Listening, Mode, Panel, PtyId, Workspace};
 
     #[test]
     fn a_task_shows_its_agent_while_live_and_how_it_ended_after() {
@@ -317,7 +317,7 @@ pub(crate) mod tests {
             directory: "/repo".into(),
             branch: None,
             harness: "claude-code".into(),
-            session: Session { id: SessionId("ses".into()), started: false },
+            session: None,
             ended_at: None,
             archived_at: None,
             rev: 1,

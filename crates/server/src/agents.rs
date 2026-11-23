@@ -5,13 +5,13 @@ use std::sync::{Arc, Weak};
 
 use octopus_proto::Error;
 use octopus_proto::Event;
-use octopus_proto::ops::{HarnessCheck, HarnessSet, HarnessStatus, Revised, TaskFocus};
+use octopus_proto::ops::{AgentReportSession, HarnessCheck, HarnessSet, HarnessStatus, Harnesses, Revised, TaskFocus};
 use octopus_proto::types::{AGENT_PANEL, AgentStatus, PtyId, TaskId};
 
 use crate::program_status::ProgramStatus;
 use crate::store::{Harness, PanelRow, TaskRow};
 use crate::terminals::Terminal;
-use crate::{Server, State, harness, lock, login, now, report};
+use crate::{Server, State, harness, lock, login, nonempty, now, report};
 
 /// How long an agent stays idle, silent and unshown before the server stops it to reclaim its memory.
 pub const AGENT_RECLAIM_MS: i64 = 30 * 60 * 1000;
@@ -66,6 +66,11 @@ impl State {
     pub(crate) fn agent_terminal(&self, task: &TaskId) -> Option<&Arc<Terminal>> {
         self.agents.get(task).and_then(AgentSlot::terminal)
     }
+
+    /// The harness `harness.set` stored under `id`, else the built-in one.
+    fn harness(&self, id: &str) -> Result<Option<Harness>, Error> {
+        Ok(self.store.harness(id)?.or_else(|| harness::built_in(id)))
+    }
 }
 
 impl Server {
@@ -73,19 +78,24 @@ impl Server {
         if op.argv.is_empty() {
             return Err(Error::invalid("argv is empty"));
         }
-        if harness::names_session(&op.resume) && !harness::names_session(&op.start) {
-            return Err(Error::invalid(format!("resume names {} and start does not", harness::SESSION)));
-        }
-        let harness = Harness { argv: op.argv, start: op.start, resume: op.resume, install: op.install };
+        let harness = Harness { argv: op.argv, resume: op.resume, env: op.env, install: op.install };
         let mut state = lock(&self.state);
         let rev = state.store.set_harness(&op.id, &harness)?;
         self.publish(&state, rev, Event::HarnessUpdated { harness: op.id });
         Ok(Revised { rev })
     }
 
+    pub(crate) fn harness_list(&self) -> Result<Harnesses, Error> {
+        let mut harnesses = lock(&self.state).store.harness_ids()?;
+        harnesses.extend(harness::built_ins().into_iter().map(|(id, _)| id.to_string()));
+        harnesses.sort();
+        harnesses.dedup();
+        Ok(Harnesses { harnesses })
+    }
+
     /// Looks the program up on the login PATH from the home folder, as an agent's start does from its directory.
     pub(crate) fn harness_check(&self, op: HarnessCheck) -> Result<HarnessStatus, Error> {
-        let harness = lock(&self.state).store.harness(&op.id)?;
+        let harness = lock(&self.state).harness(&op.id)?;
         let Harness { argv, install, .. } = harness.ok_or_else(|| Error::not_found(format!("harness {}", op.id)))?;
         let program = argv.into_iter().next().expect("harness.set rejects an empty argv");
         let home = login::home()?;
@@ -118,28 +128,30 @@ impl Server {
         });
     }
 
-    /// Shows what the agent reported, and marks its session created by any report a turn makes: every state but
-    /// `idle`, which a program also reports at start, and `clear`.
     fn agent_reported(&self, task: &TaskId, id: &PtyId, reported: ProgramStatus) {
         let shown = agent_status(reported);
         let mut state = lock(&self.state);
         let Some(AgentSlot::Spawned { terminal, status, since }) = state.agents.get_mut(task) else { return };
-        if terminal.id != *id {
+        if terminal.id != *id || *status == shown {
             return;
         }
-        let moved = *status != shown;
-        if moved {
-            (*status, *since) = (shown, now());
-        }
-        let saved = state.store.task(task).and_then(|mut row| {
-            let turned = !matches!(reported, ProgramStatus::Idle | ProgramStatus::Clear);
-            let created = !row.session.started && turned;
-            row.session.started |= created;
-            if moved || created { self.save_and_publish(&mut state, &mut row).map(drop) } else { Ok(()) }
-        });
+        (*status, *since) = (shown, now());
+        let saved = state.store.task(task).and_then(|mut row| self.save_and_publish(&mut state, &mut row));
         if let Err(error) = saved {
             report!("publish what the agent of {task} is doing: {error}");
         }
+    }
+
+    /// Records the session the task's agent reports it runs in, leaving the agent running.
+    pub(crate) fn agent_report_session(&self, op: AgentReportSession) -> Result<Revised, Error> {
+        nonempty("a session id", &op.session.0)?;
+        let mut state = lock(&self.state);
+        let mut row = state.store.task(&op.task)?;
+        if row.session.as_ref() == Some(&op.session) {
+            return Ok(Revised { rev: row.rev });
+        }
+        row.session = Some(op.session);
+        self.save_and_publish(&mut state, &mut row)
     }
 
     /// Starts the agent of a live task whose agent is not running, in the task's directory once it is there. The login
@@ -155,7 +167,7 @@ impl Server {
             if state.agent_running(&row.id) {
                 return Ok(Revised { rev: row.rev });
             }
-            (PathBuf::from(&row.directory), state.store.harness(&row.harness)?)
+            (PathBuf::from(&row.directory), state.harness(&row.harness)?)
         };
         let started = harness.map(|harness| login::resolve(&directory).map(|env| (harness, env))).transpose()?;
         let mut state = lock(&self.state);
@@ -181,22 +193,24 @@ impl Server {
         row: &mut TaskRow,
         harness: Harness,
         focus_args: Vec<String>,
-        env: Vec<(String, String)>,
+        mut env: Vec<(String, String)>,
     ) -> Result<AgentSlot, Error> {
         let directory = PathBuf::from(&row.directory);
         let (program, args) = harness.argv.split_first().expect("harness.set rejects an empty argv");
         let Ok(program) = which::which_in(program, Some(login::search_path(&env)?), &directory) else {
             return Ok(AgentSlot::HarnessNotInstalled { install: harness.install });
         };
-        let session_args = if row.session.started { &harness.resume } else { &harness.start };
-        let plugin = (row.harness == harness::CLAUDE_CODE)
-            .then(|| ["--plugin-dir".to_string(), self.plugin.to_string_lossy().into_owned()]);
+        let files = self.files.to_string_lossy();
+        let fill = |text: &String| text.replace(harness::FILES, &files);
+        let resume = row.session.as_ref().map_or_else(Vec::new, |session| {
+            harness.resume.iter().map(|arg| fill(arg).replace(harness::SESSION, &session.0)).collect()
+        });
         let argv = std::iter::once(program.to_string_lossy().into_owned())
-            .chain(args.iter().cloned())
-            .chain(plugin.into_iter().flatten())
+            .chain(args.iter().map(fill))
             .chain(focus_args)
-            .chain(session_args.iter().map(|arg| arg.replace(harness::SESSION, &row.session.id.0)))
+            .chain(resume)
             .collect();
+        env.extend(harness.env.iter().map(|var| (var.name.clone(), fill(&var.value))));
         let panel = PanelRow { id: PtyId::random(), task: row.id.clone(), name: AGENT_PANEL.to_string() };
         let terminal = self.spawn_panel(state, &panel, argv, &directory, env)?;
         Ok(self.spawned_agent(&row.id, terminal))

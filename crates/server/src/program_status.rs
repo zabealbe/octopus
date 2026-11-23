@@ -1,5 +1,6 @@
 //! The Program Status Protocol (OSC 7501): a program asks its terminal with a probe whether it reads status
-//! reports, and once answered reports each change of what it is doing.
+//! reports, and once answered reports each change of what it is doing. A report naming an `id` describes one part of
+//! the program, so only the reports without one say what the program is doing.
 
 use alacritty_terminal::vte::{Params, Parser, Perform};
 use serde::{Deserialize, Serialize};
@@ -48,8 +49,11 @@ impl Perform for Said {
             self.probed = true;
             return;
         }
-        let state = body.split(|byte| *byte == b':').find_map(|field| field.strip_prefix(b"state="));
-        let reported = match state {
+        let mut fields = body.split(|byte| *byte == b':');
+        if fields.clone().any(|field| field.starts_with(b"id=")) {
+            return;
+        }
+        let reported = match fields.find_map(|field| field.strip_prefix(b"state=")) {
             Some(b"working") => ProgramStatus::Working,
             Some(b"blocked") => ProgramStatus::Blocked,
             Some(b"done") => ProgramStatus::Done,
@@ -84,5 +88,14 @@ mod tests {
         assert_eq!(said, Said { probed: false, status: Some(ProgramStatus::Blocked) });
         assert_eq!(listener.read(b"\x1b]7501;state=idle:app=x\x07").status, Some(ProgramStatus::Idle));
         assert_eq!(listener.read(b"\x1b]7501;state=asleep\x07\x1b]0;title\x07"), Said::default());
+    }
+
+    #[test]
+    fn a_report_naming_an_id_says_nothing_about_the_program() {
+        let mut listener = Listener::default();
+        let said = listener
+            .read(b"\x1b]7501;state=working:app=opencode\x1b\\\x1b]7501;state=working:id=ses_1:app=opencode\x1b\\");
+        assert_eq!(said.status, Some(ProgramStatus::Working));
+        assert_eq!(listener.read(b"\x1b]7501;state=clear:id=ses_1\x1b\\"), Said::default());
     }
 }

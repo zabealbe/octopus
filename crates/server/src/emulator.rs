@@ -39,7 +39,7 @@ impl Timeout for Unsynced {
 
 impl Emulator {
     pub fn new(cols: u16, rows: u16) -> Self {
-        let config = Config { scrolling_history: HISTORY_LINES, ..Config::default() };
+        let config = Config { scrolling_history: HISTORY_LINES, kitty_keyboard: true, ..Config::default() };
         let term = Term::new(config, &size(cols, rows), VoidListener);
         Self { term, parser: Processor::new(), unsettled: Vec::new() }
     }
@@ -161,6 +161,15 @@ const SET_MODES: [(TermMode, &str); 12] = [
 ];
 
 const RESET_MODES: [(TermMode, &str); 2] = [(TermMode::SHOW_CURSOR, "\x1b[?25l"), (TermMode::LINE_WRAP, "\x1b[?7l")];
+
+/// The kitty keyboard protocol's flags, each with its bit in the `CSI > flags u` a program pushes.
+const KEYBOARD_FLAGS: [(TermMode, u8); 5] = [
+    (TermMode::DISAMBIGUATE_ESC_CODES, 1),
+    (TermMode::REPORT_EVENT_TYPES, 2),
+    (TermMode::REPORT_ALTERNATE_KEYS, 4),
+    (TermMode::REPORT_ALL_KEYS_AS_ESC, 8),
+    (TermMode::REPORT_ASSOCIATED_TEXT, 16),
+];
 
 /// The bytes that draw a screen on a terminal just reset, with the attributes and link they last set.
 #[derive(Default)]
@@ -297,6 +306,10 @@ impl Drawing {
             if !mode.contains(flag) {
                 self.text.push_str(reset);
             }
+        }
+        let keyboard: u8 = KEYBOARD_FLAGS.iter().filter(|(flag, _)| mode.contains(*flag)).map(|(_, bit)| bit).sum();
+        if keyboard != 0 {
+            self.text.push_str(&format!("\x1b[>{keyboard}u"));
         }
     }
 

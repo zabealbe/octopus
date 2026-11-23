@@ -7,16 +7,11 @@ use octopus_proto::ops::{
     Revised, TaskArchive, TaskCreate, TaskCreated, TaskMove, TaskRename, TaskSetParent, TaskSetSession,
     TaskSetWorkspace,
 };
-use octopus_proto::types::{Agent, FRESH_SESSION, Mode, Session, SessionId, SessionStart, Task, TaskId, TaskState};
+use octopus_proto::types::{Agent, FRESH_SESSION, Mode, SessionStart, Task, TaskId, TaskState};
 
 use crate::agents::AgentSlot;
 use crate::store::TaskRow;
 use crate::{Server, State, folders, lock, nonempty, now, report, worktrees};
-
-/// A session no agent has run in yet, named by a UUID v4.
-fn fresh_session() -> Session {
-    Session { id: SessionId(uuid::Uuid::new_v4().to_string()), started: false }
-}
 
 pub fn ended_at(state: TaskState, now: i64) -> Option<i64> {
     (!state.is_live()).then_some(now)
@@ -60,10 +55,10 @@ impl Server {
     pub(crate) fn task_create(&self, op: TaskCreate) -> Result<TaskCreated, Error> {
         nonempty("a task title", &op.title)?;
         let session = match op.session {
-            SessionStart::Fresh => fresh_session(),
+            SessionStart::Fresh => None,
             SessionStart::Resume(id) => {
                 nonempty("a session id", &id.0)?;
-                Session { id, started: true }
+                Some(id)
             }
         };
         let folder = folders::directory("folder", &op.folder)?;
@@ -190,7 +185,7 @@ impl Server {
         }
         let mut state = lock(&self.state);
         let mut row = state.store.task(&op.task)?;
-        row.session = Session { id: op.session, started: true };
+        row.session = Some(op.session);
         let rev = state.store.save_task(&mut row)?;
         state.forget_agent(&row.id);
         self.publish_task(&state, &row);

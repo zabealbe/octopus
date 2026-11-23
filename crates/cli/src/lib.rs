@@ -1,4 +1,5 @@
 mod account;
+mod agent_hook;
 mod attach;
 pub mod commands;
 mod install;
@@ -51,9 +52,12 @@ fn print(value: &impl Serialize) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The server's own processes leave this machine's server as they find it.
-fn runs_the_server(noun: &str, verbs: &clap::ArgMatches) -> bool {
-    noun == "server" && matches!(verbs.subcommand_name(), Some("run" | "start" | "terminal-host"))
+/// The server's own processes, and the hook an agent runs at each prompt, leave this machine's server as they find it:
+/// a repair from inside a hook would hold the agent's prompt until the server restarts.
+fn leaves_the_server(noun: &str, verbs: &clap::ArgMatches) -> bool {
+    let verb = verbs.subcommand_name();
+    (noun == "server" && matches!(verb, Some("run" | "start" | "terminal-host")))
+        || (noun == "agent" && verb == Some("hook"))
 }
 
 /// The app owns the main thread, which the macOS event loop requires; every other command runs on tokio.
@@ -92,7 +96,7 @@ pub fn main() -> ExitCode {
             manual::MicrophoneVerb::from_arg_matches(verbs).map_err(anyhow::Error::from).and_then(|verb| verb.run())
         }
         Some((noun, verbs)) => {
-            if !runs_the_server(noun, verbs) {
+            if !leaves_the_server(noun, verbs) {
                 repair::cli();
             }
             tokio::runtime::Runtime::new()

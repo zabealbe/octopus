@@ -138,8 +138,24 @@ export function NewTask(props: { section: string | null }) {
           choose={draft.setState}
         />
         <Flab>harness</Flab>
-        <Field value={draft.harness()} input={draft.setHarness} mono />
-        <Show when={draft.harnessMissing()}>{(missing) => <Note err>{missing()}</Note>}</Show>
+        <label class="field">
+          <span class="name">{draft.harness()}</span>
+          <Chev />
+          <select
+            class="native"
+            value={draft.harness()}
+            onChange={(event) => draft.setHarness(event.currentTarget.value)}
+          >
+            <For each={draft.harnesses()}>{(id) => <option value={id}>{id}</option>}</For>
+          </select>
+        </label>
+        <Show when={draft.harnessMissing()}>
+          {(missing) => (
+            <Note err wrap>
+              {missing()}
+            </Note>
+          )}
+        </Show>
         <Flab>session</Flab>
         <Field value={draft.session()} input={draft.setSession} placeholder="fresh session, or an id to resume" />
         <Gap n={2} />

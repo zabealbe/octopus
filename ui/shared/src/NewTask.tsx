@@ -234,7 +234,13 @@ export function NewTask() {
         <Field label="state">
           <Segments options={TASK_STATES} value={draft.state()} choose={draft.setState} />
         </Field>
-        <TextField label="harness" value={draft.harness()} change={draft.setHarness} />
+        <Field label="harness">
+          <div class="search">
+            <select value={draft.harness()} onChange={(event) => draft.setHarness(event.currentTarget.value)}>
+              <For each={draft.harnesses()}>{(id) => <option value={id}>{id}</option>}</For>
+            </select>
+          </div>
+        </Field>
         <Show when={draft.harnessMissing()}>{(missing) => <div class="mlabel missing">{missing()}</div>}</Show>
         <TextField
           label="session"

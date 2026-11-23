@@ -79,14 +79,20 @@ impl ServerVerb {
     }
 }
 
+/// The folder beside a server's store that holds what its harnesses read.
+const HARNESS_FILES: &str = "harnesses";
+
 async fn serve(run: ServerRun) -> anyhow::Result<()> {
     run.check()?;
     let ServerRun { name, socket, store, worktrees, terminal_host, udp, relay, microphone } = run;
     local::clear_stale(&socket).with_context(|| format!("bind {}", socket.display()))?;
     let host = TerminalHost { program: std::env::current_exe()?, address: terminal_host };
-    let plugin = store.with_file_name(skill::PLUGIN_DIR);
-    skill::write_plugin(&plugin)?;
-    let server = octopus_server::Server::open(&name, &store, &worktrees, &host, relay.clone(), microphone, &plugin)
+    let files = store.with_file_name(HARNESS_FILES);
+    let skill = skill::render(&crate::commands::tree());
+    octopus_server::lay_out_files(&files, &skill, &host.program)
+        .with_context(|| format!("lay out {}", files.display()))?;
+    skill::install_for_agents()?;
+    let server = octopus_server::Server::open(&name, &store, &worktrees, &host, relay.clone(), microphone, &files)
         .map_err(|error| anyhow!("{error}"))?;
     let endpoint = remote::listen(udp, relay.clone(), server.device()).await?;
     let key = server.device().public();

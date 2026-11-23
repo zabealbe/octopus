@@ -11,6 +11,7 @@ use octopus_proto::{Op, Outcome};
 use serde_json::Value;
 
 use crate::account::AccountVerb;
+use crate::agent_hook::AgentVerb;
 use crate::manual::{FileVerb, MicrophoneVerb, PairingVerb, ServerVerb, TermVerb};
 use crate::skill::SkillVerb;
 use crate::{call, connect, print, server_error};
@@ -93,6 +94,7 @@ pub fn tree() -> Command {
         let (noun, _) = split_op(command.op);
         extend(&mut nouns, noun, |known| known.subcommand(op_command(&command)));
     }
+    extend(&mut nouns, "agent", AgentVerb::augment_subcommands);
     extend(&mut nouns, "server", ServerVerb::augment_subcommands);
     extend(&mut nouns, "term", TermVerb::augment_subcommands);
     extend(&mut nouns, "file", FileVerb::augment_subcommands);
@@ -177,6 +179,7 @@ pub async fn run(matches: &ArgMatches) -> anyhow::Result<()> {
         return call_op(&command, flags).await;
     }
     match noun {
+        "agent" => AgentVerb::from_arg_matches(verbs)?.run().await,
         "server" => ServerVerb::from_arg_matches(verbs)?.run().await,
         "term" => TermVerb::from_arg_matches(verbs)?.run().await,
         "file" => FileVerb::from_arg_matches(verbs)?.run().await,

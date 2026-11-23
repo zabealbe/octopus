@@ -318,6 +318,17 @@ pub struct HarnessStatus {
     pub install: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct Harnesses {
+    /// Every harness id the server knows, sorted.
+    pub harnesses: Vec<String>,
+}
+
+op!(
+    /// List every harness the server knows: its built-in ones and the ones `harness.set` stored.
+    HarnessList = "harness.list" -> Harnesses {}
+);
 op!(
     /// Show whether a harness's program is installed on the server, and the command that installs it.
     HarnessCheck = "harness.check" -> HarnessStatus {
@@ -332,14 +343,24 @@ op!(
         id: String,
         /// The agent's argv as a JSON array of strings, e.g. ["claude"].
         argv: Vec<String>,
-        /// The args appended to argv on a session's first start, with {session} for the session id, e.g.
-        /// ["--session-id","{session}"].
-        start: Vec<String>,
-        /// The args appended to argv on every later start, with {session} for the session id, e.g.
+        /// The args appended to argv to resume the task's session, with {session} for its id, e.g.
         /// ["--resume","{session}"].
         resume: Vec<String>,
+        /// The variables the agent's terminal exports beside every task terminal's, e.g.
+        /// [{"name":"FORCE_COLOR","value":"1"}]. {files} in argv, resume and a value stands for the server's
+        /// harnesses folder.
+        env: Vec<EnvVar>,
         /// The command that installs the agent, shown when it is missing.
         install: String,
+    }
+);
+record!(
+    /// A variable a harness's agent terminal exports.
+    EnvVar {
+        /// The variable's name.
+        name: String,
+        /// Its value.
+        value: String,
     }
 );
 op!(
@@ -370,6 +391,16 @@ op!(
         /// The task's id.
         task: TaskId,
         /// The session to resume.
+        session: SessionId,
+    }
+);
+op!(
+    /// Record the session a task's agent runs in, as the agent reports it, leaving the agent running; its next start
+    /// resumes it.
+    AgentReportSession = "agent.report_session" -> Revised {
+        /// The task's id.
+        task: TaskId,
+        /// The session the agent runs in.
         session: SessionId,
     }
 );
@@ -723,6 +754,7 @@ pub fn commands() -> Vec<Command> {
         command::<WorkspaceRemove>(),
         command::<FolderGet>(),
         command::<HarnessSet>(),
+        command::<HarnessList>(),
         command::<HarnessCheck>(),
         command::<TaskCreate>(),
         command::<TaskMove>(),
@@ -730,6 +762,7 @@ pub fn commands() -> Vec<Command> {
         command::<TaskSetWorkspace>(),
         command::<TaskRename>(),
         command::<TaskSetSession>(),
+        command::<AgentReportSession>(),
         command::<TaskArchive>(),
         command::<TaskFocus>(),
         command::<TaskGet>(),
