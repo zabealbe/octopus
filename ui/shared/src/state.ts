@@ -38,6 +38,7 @@ export const workspaces = () => inSectionOrder(model.lists.workspaces, sectionOr
 export const [servers, setServers] = createSignal<ServerView[]>([]);
 export const [me, setMe] = createSignal("");
 export const [myKey, setMyKey] = createSignal("");
+export const [version, setVersion] = createSignal("");
 export const [account, setAccount] = createSignal<AccountView>({
   id: "",
   member: true,
@@ -139,6 +140,7 @@ export function applyUi(next: Ui) {
 export function applyBoot(boot: Boot) {
   setMe(boot.me);
   setMyKey(boot.key);
+  setVersion(boot.version);
   setAccount(boot.account);
   setServers(boot.servers);
   applyModel(boot.model);

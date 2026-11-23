@@ -53,12 +53,22 @@ pub(crate) struct Boot {
     pub servers: Vec<ServerView>,
     pub model: Model,
     pub ui: Ui,
+    /// The version of the binary this window runs in.
+    pub version: String,
 }
 
 #[tauri::command]
 pub fn boot(hub: Hubbed, ui: Uis) -> Boot {
     let (me, key, account) = (hub.me.name(), hub.me.key.public(), hub.account());
-    Boot { me, key, account, servers: hub.servers(), model: hub.model(), ui: ui.ui() }
+    Boot {
+        me,
+        key,
+        account,
+        servers: hub.servers(),
+        model: hub.model(),
+        ui: ui.ui(),
+        version: env!("CARGO_PKG_VERSION").into(),
+    }
 }
 
 #[tauri::command]

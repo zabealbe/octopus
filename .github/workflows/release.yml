@@ -58,6 +58,21 @@ jobs:
             tail -n +3 <<<"$message"
             echo "$delimiter"
           } >>"$GITHUB_OUTPUT"
+      - if: steps.commit.outputs.version != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.commit.outputs.sha }}
+          persist-credentials: false
+      - name: Check the release commit's Cargo.toml carries its version
+        if: steps.commit.outputs.version != ''
+        env:
+          VERSION: ${{ steps.commit.outputs.version }}
+        run: |
+          carried=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "octopus-cli") | .version')
+          if [[ $carried != "$VERSION" ]]; then
+            echo "the release commit names v$VERSION, but its Cargo.toml carries $carried" >&2
+            exit 1
+          fi
 
   macos:
     needs: version
@@ -78,12 +93,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          version: ${{ needs.version.outputs.version }}
           target: ${{ matrix.target }}
       - run: |
           MACOSX_DEPLOYMENT_TARGET=$(jq -r .bundle.macOS.minimumSystemVersion crates/desktop/tauri.conf.json)
           export MACOSX_DEPLOYMENT_TARGET
-          cargo build --release --locked -p octopus-cli --target "$BUILD_TARGET"
+          cargo build --release --locked -p octopus-cli --features release --target "$BUILD_TARGET"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-${{ matrix.target }}
@@ -118,7 +132,6 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          version: ${{ needs.version.outputs.version }}
           target: ${{ matrix.target }}
           webkit: true
       - name: Build the headless CLI, then the app, carrying the headless build inside the AppImage for the server's copy
@@ -128,7 +141,7 @@ jobs:
           mkdir -p dist "$headless"
           cp "target/$BUILD_TARGET/release/octopus" "$headless/octopus"
           tar -czf "dist/octopus-cli_${VERSION}_${BUILD_TARGET}.tar.gz" -C "$headless" octopus
-          cargo build --release --locked -p octopus-cli --target "$BUILD_TARGET"
+          cargo build --release --locked -p octopus-cli --features release --target "$BUILD_TARGET"
           config=$(jq -c --arg headless "$headless/octopus" \
             '.bundle.linux.appimage.files["/usr/lib/octopus/octopus"] = $headless' <<<"$DESKTOP_BUNDLE_CONFIG")
           (cd crates/desktop && cargo tauri bundle --bundles appimage --target "$BUILD_TARGET" --config "$config")
@@ -184,7 +197,6 @@ jobs:
           restore-keys: gradle-
       - uses: ./.github/actions/setup
         with:
-          version: ${{ needs.version.outputs.version }}
           target: ${{ matrix.triple }}
       - working-directory: crates/mobile
         run: NDK_HOME="$ANDROID_NDK_LATEST_HOME" cargo tauri android build --apk --split-per-abi --target "$BUILD_TARGET"
@@ -217,8 +229,6 @@ jobs:
           ref: ${{ needs.version.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup
-        with:
-          version: ${{ needs.version.outputs.version }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: macos-*

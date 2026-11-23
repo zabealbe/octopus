@@ -4246,7 +4246,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-cli"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4272,7 +4272,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-client"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -4289,7 +4289,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-desktop"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4318,7 +4318,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-mobile"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4344,7 +4344,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-proto"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "fastrand",
  "hex",
@@ -4361,7 +4361,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-server"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -4383,7 +4383,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-shell"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

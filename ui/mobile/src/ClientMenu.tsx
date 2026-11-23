@@ -8,7 +8,7 @@ import {
   NEXT_START,
   REMOVE_CONFIRM,
 } from "@octopus/shared/ClientMenu.tsx";
-import { VERSION, ZOOMS, type PairedAccount, type ShownOffer } from "@octopus/shared/generated.ts";
+import { ZOOMS, type PairedAccount, type ShownOffer } from "@octopus/shared/generated.ts";
 import {
   accountLabel,
   clientStatus,
@@ -32,6 +32,7 @@ import {
   setAgentFlags,
   setAppearance,
   ui,
+  version,
   zoom,
 } from "@octopus/shared/state.ts";
 import { shortKey } from "./format";
@@ -256,7 +257,7 @@ export function ClientMenu() {
           <Note>{NEXT_START}</Note>
         </Show>
         <Sep />
-        <Mi slot={<Icon name="info" />} end={<Why>{copied() ? "copied" : VERSION}</Why>} tap={about}>
+        <Mi slot={<Icon name="info" />} end={<Why>{copied() ? "copied" : version()}</Why>} tap={about}>
           About octopus
         </Mi>
         <Gap n={2} />

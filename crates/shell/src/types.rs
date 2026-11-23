@@ -140,7 +140,6 @@ pub fn render() -> String {
         constant("FRESH_SESSION", &FRESH_SESSION),
         constant("TERM_HISTORY_LINES", &HISTORY_LINES),
         constant("HOLDER_GRACE_MS", &HOLDER_GRACE_MS),
-        constant("VERSION", &env!("CARGO_PKG_VERSION")),
         constant("COMMANDS", &crate::COMMANDS),
         constant(
             "EVENTS",

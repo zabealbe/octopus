@@ -1,10 +1,7 @@
 name: setup
-description: Stamp the release version and install the tauri CLI, plus, for a compiling job, the Rust toolchain, its cache and the UI build.
+description: Install the tauri CLI, plus, for a compiling job, the Rust toolchain, its cache and the UI build.
 
 inputs:
-  version:
-    description: The release version to stamp.
-    required: true
   target:
     description: The Rust target the job compiles for, which also keys its Rust cache. Empty for a job that only bundles.
     default: ""
@@ -43,19 +40,6 @@ runs:
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
         no-cache: true
-
-    - name: Stamp the version
-      shell: bash
-      env:
-        VERSION: ${{ inputs.version }}
-      run: |
-        perl -pi -e 's/^version = "[^"]*"$/version = "$ENV{VERSION}"/' Cargo.toml
-        grep -qx "version = \"$VERSION\"" Cargo.toml
-        cargo update --workspace
-        for conf in crates/desktop/tauri.conf.json crates/mobile/tauri.conf.json; do
-          jq --arg version "$VERSION" '.version = $version' "$conf" >"$conf.stamped"
-          mv "$conf.stamped" "$conf"
-        done
 
     - name: Put the prebuilt tauri CLI behind cargo tauri
       shell: bash

@@ -73,10 +73,11 @@ pub fn bundle(program: &Path) -> Option<&Path> {
     macos.parent()?.parent().filter(|bundle| bundle.extension().is_some_and(|extension| extension == "app"))
 }
 
-/// What this launch runs as. A build from source is version 0.0.0, unstamped, and stays the build it is.
+/// What this launch runs as. A build without the `release` feature, which only the release workflow turns on, is a
+/// build from source and stays the build it is.
 #[cfg(feature = "desktop")]
 pub fn app() -> octopus_desktop::App {
-    if env!("CARGO_PKG_VERSION") == "0.0.0" {
+    if !cfg!(feature = "release") {
         return octopus_desktop::App::Source;
     }
     platform_app()

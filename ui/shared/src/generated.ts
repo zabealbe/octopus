@@ -345,7 +345,11 @@ me: string,
 /**
  * This client's device key, which every server it is paired with knows it by.
  */
-key: string, account: AccountView, servers: Array<ServerView>, model: Model, ui: Ui, };
+key: string, account: AccountView, servers: Array<ServerView>, model: Model, ui: Ui, 
+/**
+ * The version of the binary this window runs in.
+ */
+version: string, };
 
 export type NewTask = { server: string, workspace: WorkspaceId, folder: string, mode: Mode, title: string, parent: TaskId | null, state: TaskState, harness: string, 
 /**
@@ -404,8 +408,6 @@ export const FRESH_SESSION = "fresh" as const;
 export const TERM_HISTORY_LINES = 10000 as const;
 
 export const HOLDER_GRACE_MS = 10000 as const;
-
-export const VERSION = "0.0.0" as const;
 
 export const COMMANDS = ["boot","ready","ui_act","quit","server_pair","server_offer","server_accounts","server_revoke","account_link","account_join","settings_set","account_remove","account_leave","account_start_over","servers_refresh","server_rename","server_forget","workspace_add","workspace_remove","section_rename","section_color","auto_color","task_focus","task_resume","task_move","task_set_parent","task_set_workspace","task_rename","task_archive","task_create","folder_get","harness_check","term_attach","term_input","term_detach","term_open","term_install_microphone","term_close","term_claim","term_take_lock","term_resize","browser_open","browser_close","browser_move","file_list","file_root_url","file_write","file_create","file_move","file_copy","file_delete","file_upload","file_upload_content","file_search"] as const;
 

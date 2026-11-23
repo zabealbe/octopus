@@ -15,7 +15,6 @@ import {
 } from "./Menu";
 import { expiry } from "./pairing";
 import { ServerMenu } from "./ServerMenu";
-import { VERSION } from "./generated";
 import {
   account,
   act,
@@ -28,6 +27,7 @@ import {
   showClientMenu,
   showModal,
   ui,
+  version,
   zoom,
 } from "./state";
 import { ticking } from "./time";
@@ -44,7 +44,7 @@ const COPIED_MS = 1800;
 export function aboutCopy() {
   const [copied, setCopied] = createSignal(false);
   const copy = () =>
-    navigator.clipboard.writeText(`octopus ${VERSION}`).then(() => {
+    navigator.clipboard.writeText(`octopus ${version()}`).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), COPIED_MS);
     }, report);
@@ -260,7 +260,7 @@ export function ClientMenu(props: { floats: (element: HTMLElement) => void; show
               Keyboard shortcuts
             </Item>
             <button class="mi" role="menuitem" onClick={about}>
-              About octopus<span class="why">{copied() ? "copied" : VERSION}</span>
+              About octopus<span class="why">{copied() ? "copied" : version()}</span>
             </button>
             <Item kbd={hint(commands.quit)} run={commands.quit.run}>
               Quit octopus

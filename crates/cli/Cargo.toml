@@ -15,6 +15,7 @@ path = "src/main.rs"
 [features]
 default = ["desktop"]
 desktop = ["dep:octopus-desktop"]
+release = []
 
 [dependencies]
 octopus-proto.workspace = true
